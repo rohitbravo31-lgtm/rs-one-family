@@ -46,7 +46,7 @@
 
 <script>
 const SUPABASE_URL='https://pwwgvkarbjjatznqyxla.supabase.co';
-const SUPABASE_KEY='sb_publishable_NbdOs5K_Z2N1_5obcWvfaw_3agUlmw';
+const SUPABASE_KEY='sb_publishable_NbdOs5K_Z2N1_5obcWvfaw_3agUlmwW';
 const STORE='rs_one_session_v3';let session=null,family=null,me=null,members=[],authMode='login';
 const nav=[['home','Home'],['family','Family'],['vision','Vision'],['wishlist','Wishlist'],['travel','Travel'],['memberships','Memberships'],['money','Money'],['memories','Memories'],['vault','Vault'],['alerts','Alerts'],['diagnostics','Diagnostics']];
 const $=id=>document.getElementById(id);function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}function msg(el,t,type='error'){el.textContent=t;el.className='message show '+type}function clear(el){el.textContent='';el.className='message'}function initials(n){return (n||'?').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()}

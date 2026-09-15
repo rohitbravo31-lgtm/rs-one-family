@@ -56,7 +56,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL='https://pwwgvkarbjjatznqyxla.supabase.co';
-const SUPABASE_KEY='sb_publishable_NbdOs5K_Z2N1_5obcWvfaw_3agUlmw';
+const SUPABASE_KEY='sb_publishable_NbdOs5K_Z2N1_5obcWvfaw_3agUlmwW';
 const {createClient}=window.supabase;
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce'}});
 let session=null,user=null,family=null,me=null,members=[];let realtimeChannel=null;let poller=null;let authMode='login';

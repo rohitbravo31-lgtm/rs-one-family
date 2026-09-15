@@ -58,8 +58,13 @@
 <script>
 const SUPABASE_URL='https://pwwgvkarbjjatznqyxla.supabase.co';
 const SUPABASE_KEY='sb_publishable_NbdOs5K_Z2N1_5obcWvfaw_3agUlmwW';
+if(!window.supabase||typeof window.supabase.createClient!=='function'){
+  document.getElementById('authMsg').textContent='RS One could not load the Supabase browser connection. Please refresh the page or check your internet connection.';
+  document.getElementById('authMsg').className='message show error';
+  throw new Error('Supabase browser SDK did not load');
+}
 const {createClient}=window.supabase;
-const sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce'}});
+const sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce',storageKey:'rs-one-auth'}});
 let session=null,user=null,family=null,me=null,members=[];let realtimeChannel=null;let poller=null;let authMode='login';
 const nav=[['home','⌂','Home'],['vision','✦','Vision'],['explore','🌎','Explore'],['travel','✈','Travel'],['family','👨‍👩‍👧','Family'],['wishlist','♥','Wishlist'],['money','₹','Money'],['memberships','🎫','Memberships'],['map','🗺','Map'],['memories','📸','Memories'],['vault','🔐','Vault'],['alerts','🔔','Alerts'],['analytics','📊','Analytics'],['data','⇅','Data'],['diagnostics','⚙','Diagnostics']];
 const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
@@ -76,10 +81,55 @@ async function loadWishlist(){if(!family)return;const box=$('wishlistList');try{
 async function loadActivity(){if(!family)return;const box=$('activityList');try{const {data,error}=await sb.from('activity_events').select('id,title,description,event_type,created_at').eq('family_id',family.id).order('created_at',{ascending:false}).limit(30);if(error)throw error;box.innerHTML=data?.length?data.map(x=>`<div class="row"><div><strong>${esc(x.title||x.event_type)}</strong><div class="muted small">${esc(x.description||'')}</div></div><span class="small muted">${new Date(x.created_at).toLocaleString()}</span></div>`).join(''):'<div class="empty">No activity yet.</div>'}catch(e){box.innerHTML=`<div class="message show error">${esc(e.message)}</div>`}}
 async function loadAnalytics(){if(!family)return;try{const [m,v,w,a]=await Promise.all([countTable('family_members'),countTable('family_vision'),countTable('family_wishlist'),countTable('activity_events')]);$('aMembers').textContent=m;$('aVision').textContent=v;$('aWishlist').textContent=w;$('aActivity').textContent=a;$('visionCount').textContent=v;$('wishlistCount').textContent=w;$('memberCount').textContent=m}catch(e){console.error(e)}}
 function subscribeRealtime(){if(!family)return;if(realtimeChannel)sb.removeChannel(realtimeChannel);realtimeChannel=sb.channel('rs-one-family-'+family.id).on('postgres_changes',{event:'*',schema:'public',table:'family_members',filter:'family_id=eq.'+family.id},()=>refreshAll()).on('postgres_changes',{event:'*',schema:'public',table:'family_vision',filter:'family_id=eq.'+family.id},()=>refreshAll()).on('postgres_changes',{event:'*',schema:'public',table:'family_wishlist',filter:'family_id=eq.'+family.id},()=>refreshAll()).on('postgres_changes',{event:'*',schema:'public',table:'activity_events',filter:'family_id=eq.'+family.id},()=>refreshAll()).subscribe(status=>{if(status==='SUBSCRIBED')$('syncText').textContent='Realtime active';else if(status==='CHANNEL_ERROR')$('syncText').textContent='Realtime unavailable · auto-refresh active'});}
-async function enterApp(){ $('authScreen').classList.add('hidden');$('appScreen').classList.remove('hidden');navBuild();setConn(true,'Authenticated');try{const ok=await loadFamily();if(!ok){$('familyModal').classList.add('show');}else{await refreshAll();subscribeRealtime()}}catch(e){console.error(e);setConn(false,'Connection failed');showMsg($('homeStatus'),e.message||'Could not load family data.')}}
+let enteringApp=false;
+async function enterApp(){
+  if(enteringApp)return;
+  enteringApp=true;
+  $('authSubmit').disabled=true;
+  try{
+    $('authScreen').classList.add('hidden');$('appScreen').classList.remove('hidden');navBuild();setConn(true,'Signed in');
+    const ok=await loadFamily();
+    if(!ok){$('familyModal').classList.add('show');showMsg($('homeStatus'),'Your account is signed in. Create your family to continue.','ok');}
+    else{await refreshAll();subscribeRealtime()}
+  }catch(e){
+    console.error(e);setConn(false,'Connection error');showMsg($('homeStatus'),e?.message||'Signed in, but family data could not be loaded.');
+  }finally{enteringApp=false;$('authSubmit').disabled=false}
+}
 $('toggleAuth').onclick=()=>{authMode=authMode==='login'?'signup':'login';$('authTitle').textContent=authMode==='login'?'Welcome to RS One':'Create your RS One account';$('authSubtitle').textContent=authMode==='login'?'Sign in to your private family home.':'Create the first account for your family home.';$('authSubmit').textContent=authMode==='login'?'Sign in':'Create account';$('toggleAuth').textContent=authMode==='login'?'Create account':'Back to sign in';clearMsg($('authMsg'))};
-$('authForm').onsubmit=async e=>{e.preventDefault();clearMsg($('authMsg'));$('authSubmit').disabled=true;try{const email=$('email').value.trim(),password=$('password').value;if(authMode==='signup'){const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:email.split('@')[0]},emailRedirectTo:location.origin}});if(error)throw error;if(data.session){session=data.session;user=data.user;await enterApp()}else{showMsg($('authMsg'),'Account created. Please confirm your email, then return here and sign in.','ok');authMode='login';$('authTitle').textContent='Welcome to RS One';$('authSubtitle').textContent='Sign in to your private family home.';$('authSubmit').textContent='Sign in';$('toggleAuth').textContent='Create account'}}else{const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;session=data.session;user=data.user;await enterApp()}}catch(e){showMsg($('authMsg'),e.message||'Authentication failed.')}finally{$('authSubmit').disabled=false}};
-sb.auth.onAuthStateChange(async(event,s)=>{session=s;user=s?.user||null;if(event==='SIGNED_IN'&&!$('appScreen').classList.contains('hidden')){try{await enterApp()}catch(e){console.error(e)}}if(event==='SIGNED_OUT'){location.reload()}if(event==='TOKEN_REFRESHED')$('syncText').textContent='Session refreshed'});
+$('authForm').onsubmit=async e=>{
+  e.preventDefault();
+  if(enteringApp)return;
+  clearMsg($('authMsg'));
+  const email=$('email').value.trim(),password=$('password').value;
+  if(!email||!password){showMsg($('authMsg'),'Please enter your email and password.');return}
+  $('authSubmit').disabled=true;$('authSubmit').textContent=authMode==='login'?'Signing in…':'Creating account…';
+  try{
+    if(authMode==='signup'){
+      const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:email.split('@')[0]},emailRedirectTo:location.origin}});
+      if(error)throw error;
+      if(data.session){session=data.session;user=data.user;await enterApp()}
+      else{showMsg($('authMsg'),'Account created. Please confirm your email, then return here and sign in.','ok');authMode='login';$('authTitle').textContent='Welcome to RS One';$('authSubtitle').textContent='Sign in to your private family home.';$('authSubmit').textContent='Sign in';$('toggleAuth').textContent='Create account'}
+    }else{
+      const {data,error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw error;
+      if(!data?.session)throw new Error('Supabase did not return a login session. Please try again.');
+      session=data.session;user=data.user;await enterApp();
+    }
+  }catch(e){
+    console.error('RS One login error:',e);
+    showMsg($('authMsg'),e?.message||e?.error_description||'Login failed. Please check your email and password.');
+  }finally{
+    if(!$('appScreen').classList.contains('hidden'))$('authSubmit').textContent='Sign in';
+    else $('authSubmit').textContent=authMode==='login'?'Sign in':'Create account';
+    $('authSubmit').disabled=false;
+  }
+};
+sb.auth.onAuthStateChange((event,s)=>{
+  session=s;user=s?.user||null;
+  if(event==='SIGNED_IN' && $('appScreen').classList.contains('hidden') && !enteringApp)enterApp().catch(e=>console.error(e));
+  if(event==='SIGNED_OUT'){session=null;user=null;location.reload()}
+  if(event==='TOKEN_REFRESHED')$('syncText').textContent='Session refreshed';
+});
 $('logout').onclick=async()=>{await sb.auth.signOut()};
 $('createFamily').onclick=async()=>{clearMsg($('familyMsg'));const name=$('familyNameInput').value.trim();if(!name){showMsg($('familyMsg'),'Family name is required.');return}$('createFamily').disabled=true;try{const {data,error}=await sb.rpc('create_family',{p_family_name:name});if(error)throw error;$('familyModal').classList.remove('show');await loadFamily();await refreshAll();subscribeRealtime();show('home')}catch(e){showMsg($('familyMsg'),e.message||'Could not create family.')}finally{$('createFamily').disabled=false}};
 $('addMember').onclick=()=>{$('memberName').value='';$('memberRelationship').value='';clearMsg($('memberMsg'));if(!family){show('home');return}$('memberModal').classList.add('show')};$('cancelMember').onclick=()=>$('memberModal').classList.remove('show');
@@ -106,7 +156,18 @@ document.querySelectorAll('.quiz').forEach(b=>b.onclick=()=>{const ok=b.dataset.
 $('exportJson').onclick=async()=>{try{const payload={exported_at:new Date().toISOString(),family,members,vision:family?(await sb.from('family_vision').select('*').eq('family_id',family.id)).data||[]:[],wishlist:family?(await sb.from('family_wishlist').select('*').eq('family_id',family.id)).data||[]:[],activity:family?(await sb.from('activity_events').select('*').eq('family_id',family.id).order('created_at',{ascending:false}).limit(500)).data||[]:[]};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rs-one-family-export.json';a.click();URL.revokeObjectURL(a.href)}catch(e){alert(e.message)}};
 async function diagnostics(){const out=[];const add=(n,ok,d)=>out.push(`<div class="check"><div><strong>${esc(n)}</strong><div class="small muted">${esc(d)}</div></div><span class="pill ${ok?'good':'bad'}">${ok?'PASS':'CHECK'}</span></div>`);add('Supabase client',!!window.supabase,'Browser SDK loaded');try{const {data,error}=await sb.auth.getSession();add('Auth session',!error&&!!data.session,'Session '+(data.session?'available':'not available'))}catch(e){add('Auth session',false,e.message)}if(user){try{const {data,error}=await sb.from('family_members').select('id').eq('user_id',user.id).limit(1);add('Member access',!error, error?.message||`${data?.length||0} record(s)`)}catch(e){add('Member access',false,e.message)}}else add('Authenticated user',false,'Sign in required');if(family){for(const table of ['families','family_members','family_vision','family_wishlist','activity_events']){try{const {count,error}=await sb.from(table).select('id',{count:'exact',head:true}).eq(table==='families'?'id':'family_id',family.id);add(table,!error,error?.message||`${count||0} record(s)`)}catch(e){add(table,false,e.message)}}}else add('Family',false,'Create or link a family first');$('diagnostics').innerHTML=out.join('')}
 $('runDiagnostics').onclick=diagnostics;
-(async()=>{try{const {data:{session:s}}=await sb.auth.getSession();session=s;user=s?.user||null;if(session)await enterApp();else{$('authScreen').classList.remove('hidden')}}catch(e){showMsg($('authMsg'),e.message||'Could not initialize authentication.')}})();
+(async()=>{
+  try{
+    $('authScreen').classList.remove('hidden');
+    const {data,error}=await sb.auth.getSession();
+    if(error)throw error;
+    session=data?.session||null;user=session?.user||null;
+    if(session)await enterApp();
+  }catch(e){
+    console.error('RS One auth initialization error:',e);
+    showMsg($('authMsg'),e?.message||'Could not initialize authentication. Please refresh and try again.');
+  }
+})();
 // Polling fallback: shared data is refreshed every 15 seconds even if Realtime is unavailable.
 poller=setInterval(()=>{if(session&&family)refreshAll()},15000);
 </script>
